@@ -93,7 +93,8 @@
         script.dataset.dimlevel ||
         script.dataset.dimstrength));
   const defaultDimOpacity = 0.2;
-  const dimEnabled = parseBoolAttr(dimConfigAttr, true);
+  // Off by default so the page stays clear; opt in with isBackdropVisible="true"
+  const dimEnabled = parseBoolAttr(dimConfigAttr, false);
   const dimOpacity = dimEnabled ? defaultDimOpacity : 0;
 
   // Central state (positions, annotations, DOM elements, filters...)
@@ -126,6 +127,9 @@
       query: ''
     },
     hidden: false,
+    layers: [],
+    layerIndex: 0,
+    hoverEl: null,
     missingObserver: null,
     missingRetryTimer: null,
     layoutObserver: null,
@@ -1443,7 +1447,8 @@
     ];
     const exportButtons = [
       { action: 'import', tip: 'Import JSON', icon: iconUpload() },
-      { action: 'export', tip: 'Export JSON', icon: iconDownload() }
+      { action: 'export', tip: 'Export JSON', icon: iconDownload() },
+      { action: 'export-ai', tip: 'Export for AI (Markdown prompt)', icon: iconAi() }
     ];
     const controlButtons = [
       { action: 'toggle-pos', tip: 'Toolbar top / bottom', icon: iconSwap() },
@@ -1502,9 +1507,8 @@
     }
     document.body.appendChild(panel);
     state.panel = panel;
-    if (isMobileLayout()) {
-      panel.style.display = 'none';
-    }
+    // Notes list always starts hidden; the toolbar button shows it
+    panel.style.display = 'none';
     const deleteAllBtn = panel.querySelector('.wn-annot-delete-all');
     if (deleteAllBtn) {
       deleteAllBtn.addEventListener('click', async (evt) => {
@@ -1607,13 +1611,13 @@
     const nameRow = document.createElement('div');
     nameRow.className = 'wn-annot-name-row wn-annotator';
     const nameLabel = document.createElement('label');
-    nameLabel.textContent = 'Reviewer name';
+    nameLabel.textContent = 'Reviewer name (optional)';
     const nameInputs = document.createElement('div');
     nameInputs.className = 'wn-annot-name-inputs wn-annotator';
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.className = 'wn-annotator';
-    nameInput.placeholder = 'Reviewer name';
+    nameInput.placeholder = 'Your name (optional)';
     nameInputs.appendChild(nameInput);
     nameRow.appendChild(nameLabel);
     nameRow.appendChild(nameInputs);
@@ -1696,16 +1700,12 @@
       const defaultName = defaultAuthor || state.annotatorName || names[0] || '';
       nameInput.value = defaultName || '';
       nameInput.disabled = false;
-      nameInput.placeholder = 'Reviewer name';
+      nameInput.placeholder = 'Your name (optional)';
 
+      // The comment is the focus; the reviewer name is optional
       backdrop.classList.add('show');
-      if (defaultName) {
-        textarea.focus();
-        textarea.select();
-      } else {
-        nameInput.focus();
-        nameInput.select();
-      }
+      textarea.focus();
+      textarea.select();
 
       const close = (val) => {
         backdrop.classList.remove('show');
@@ -1720,10 +1720,6 @@
         const selected = prioButtons.find((b) => b.classList.contains('active'));
         const priority = selected ? selected.getAttribute('data-priority') : defaultPriority;
         const author = nameInput.value.trim();
-        if (!author) {
-          await alertDialog('Please enter a reviewer name.', 'Reviewer name required');
-          return;
-        }
         recordAnnotatorName(author);
         close({ comment: textarea.value.trim(), priority, author });
       };
@@ -1804,12 +1800,17 @@
     mailBtn.type = 'button';
     mailBtn.className = 'wn-annot-pill secondary wn-annotator';
     mailBtn.textContent = 'Send by mail';
+    const aiBtn = document.createElement('button');
+    aiBtn.type = 'button';
+    aiBtn.className = 'wn-annot-pill secondary wn-annotator';
+    aiBtn.textContent = 'Export for AI';
     const exportBtn = document.createElement('button');
     exportBtn.type = 'button';
     exportBtn.className = 'wn-annot-pill primary wn-annotator';
     exportBtn.textContent = 'Export file';
     actions.appendChild(cancelBtn);
     actions.appendChild(mailBtn);
+    actions.appendChild(aiBtn);
     actions.appendChild(exportBtn);
 
     modal.appendChild(title);
@@ -1836,6 +1837,16 @@
       const reviewers = getCheckedValues(reviewerList);
       const priorities = getCheckedValues(prioList);
       exportAnnotationsFiltered({
+        reviewers,
+        priorities
+      });
+      close();
+    });
+
+    aiBtn.addEventListener('click', () => {
+      const reviewers = getCheckedValues(reviewerList);
+      const priorities = getCheckedValues(prioList);
+      exportAiPromptFiltered({
         reviewers,
         priorities
       });
@@ -2437,6 +2448,8 @@
     window.addEventListener('resize', positionTip);
     window.addEventListener('resize', positionVisibilityToggle);
     window.addEventListener('scroll', refreshMarkers, { passive: true });
+    document.addEventListener('keydown', onVisibilityShortcut);
+    document.addEventListener('keydown', onElementLayerKey);
   }
 
   function getAuthorLabel(value) {
@@ -2536,6 +2549,9 @@
 
   function setMode(nextMode, options = {}) {
     const keepOutline = options.keepOutline;
+    state.layers = [];
+    state.layerIndex = 0;
+    state.hoverEl = null;
     // Toggle annotation mode and refresh associated UI
     if (state.mode === nextMode) {
       state.mode = null;
@@ -2569,7 +2585,7 @@
     if (mode === 'text') {
       text = 'Select text then release to add a note.';
     } else if (mode === 'element') {
-      text = 'Hover an element, click to annotate.';
+      text = 'Hover an element, click to annotate. Up/Down arrows change layer.';
     }
     if (!text) return hideTip();
     state.tip.textContent = text;
@@ -2911,6 +2927,10 @@
       openExportModal();
       return;
     }
+    if (action === 'export-ai') {
+      exportAiPromptFiltered({});
+      return;
+    }
     if (action === 'import') {
       openImportModal();
       return;
@@ -2937,6 +2957,13 @@
     setAnnotatorVisibility(!state.hidden);
   }
 
+  // Alt+V shows / hides the whole Uxnote layer. KeyV is used so it works on any keyboard layout (macOS Option+V).
+  function onVisibilityShortcut(evt) {
+    if (!evt.altKey || evt.ctrlKey || evt.metaKey || evt.code !== 'KeyV') return;
+    evt.preventDefault();
+    toggleAnnotatorVisibility();
+  }
+
   function setAnnotatorVisibility(hidden) {
     state.hidden = hidden;
     saveHiddenState(hidden);
@@ -2961,7 +2988,7 @@
 
   function syncVisibilityButton() {
     if (!state.visibilityToggle) return;
-    const label = state.hidden ? 'Show Uxnote' : 'Hide Uxnote';
+    const label = state.hidden ? 'Show Uxnote (Alt+V)' : 'Hide Uxnote (Alt+V)';
     state.visibilityToggle.classList.toggle('is-muted', state.hidden);
     state.visibilityToggle.innerHTML = state.hidden ? iconEyeClosed() : iconEyeOpen();
     state.visibilityToggle.setAttribute('aria-label', label);
@@ -3118,7 +3145,7 @@
       isAnnotatableTarget(range.endContainer);
     if (!isAllowed) {
       selection.removeAllRanges();
-      showToast('Cette zone est une popup/overlay, annotation bloquée.');
+      showToast('This area cannot be annotated.');
       return;
     }
     const snippet = selection.toString().trim();
@@ -3127,7 +3154,7 @@
     if (!res) return;
     const { comment, priority, author } = res;
     const id = generateId();
-    const payload = serializeRange(range, snippet);
+    const payload = { ...serializeRange(range, snippet), ...describeTargetContext(range.commonAncestorContainer) };
     const span = applyTextHighlight(range, id);
     selection.removeAllRanges();
     const annotation = {
@@ -3150,23 +3177,56 @@
     setMode(null, { keepOutline: true });
   }
 
+  // All annotatable elements stacked under the pointer, deepest / top-most first
+  function getLayersAtPoint(x, y) {
+    if (!document.elementsFromPoint) return [];
+    return document
+      .elementsFromPoint(x, y)
+      .filter((el) => el !== document.documentElement && isAnnotatableTarget(el));
+  }
+
   function handleElementHover(evt) {
     if (state.mode !== 'element') return;
-    const el = evt.target;
-    if (!el || !isAnnotatableTarget(el)) {
+    state.layers = getLayersAtPoint(evt.clientX, evt.clientY);
+    if (!state.layers.length && evt.target && isAnnotatableTarget(evt.target)) {
+      state.layers = [evt.target];
+    }
+    state.layerIndex = 0;
+    updateHoverLayer();
+  }
+
+  // Highlights the layer currently selected (state.layerIndex) under the pointer
+  function updateHoverLayer() {
+    const el = state.layers[state.layerIndex];
+    state.hoverEl = el || null;
+    if (!el) {
       hideOutline();
       return;
     }
-    const rect = el.getBoundingClientRect();
-    showOutline(rect);
+    showOutline(el.getBoundingClientRect());
+    state.tip.textContent =
+      `Click to annotate · Up/Down layer (${state.layerIndex + 1}/${state.layers.length}) · <${el.tagName.toLowerCase()}>`;
+    positionTip();
+  }
+
+  // ↑ / ↓ in element mode walk through the stacked layers (e.g. a modal backdrop vs. the content behind it)
+  function onElementLayerKey(evt) {
+    if (state.mode !== 'element' || !state.layers.length) return;
+    if (evt.key !== 'ArrowUp' && evt.key !== 'ArrowDown') return;
+    if (state.commentModal && state.commentModal.backdrop.classList.contains('show')) return;
+    evt.preventDefault();
+    const step = evt.key === 'ArrowDown' ? 1 : -1;
+    state.layerIndex = Math.min(state.layers.length - 1, Math.max(0, state.layerIndex + step));
+    updateHoverLayer();
   }
 
   // Click on a DOM element to mark it and add a comment (element mode)
   async function handleElementClick(evt) {
     if (state.mode !== 'element') return;
-    const el = evt.target;
+    if (isWithinAnnotator(evt.target)) return;
+    const el = state.hoverEl && isAnnotatableTarget(state.hoverEl) ? state.hoverEl : evt.target;
     if (!el || !isAnnotatableTarget(el)) {
-      showToast('Cette zone est une popup/overlay, annotation bloquée.');
+      showToast('This area cannot be annotated.');
       return;
     }
     evt.preventDefault();
@@ -3176,12 +3236,11 @@
     const { comment, priority, author } = res;
     const id = generateId();
     const targetXPath = getXPath(el);
-    const targetCss = buildCssSelector(el);
     const rect = el.getBoundingClientRect();
     const annotation = {
       id,
       type: 'element',
-      target: { xpath: targetXPath, css: targetCss, tag: el.tagName.toLowerCase() },
+      target: { xpath: targetXPath, tag: el.tagName.toLowerCase(), text: getReadableText(el), ...describeTargetContext(el) },
       comment: comment.trim(),
       author: author || state.annotatorName || '',
       priority: priority || 'medium',
@@ -3315,9 +3374,7 @@
     if (el.closest) {
       if (el.closest('[data-uxnote-ignore]')) return false;
       if (el.closest('[data-uxnote-allow]')) return true;
-      const blocked = el.closest(
-        '#uxnote-root, .wn-annotator, dialog, [popover], [role="dialog"], [role="menu"], [role="tooltip"], [aria-modal="true"]'
-      );
+      const blocked = el.closest('#uxnote-root, .wn-annotator, [role="menu"], [role="tooltip"]');
       if (blocked) return false;
     }
     return true;
@@ -3636,13 +3693,17 @@
     return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
+  // Readable CSS path, with :nth-of-type where siblings share a tag, so it points to one element
   function buildCssSelector(el) {
     if (!el || el.nodeType !== 1) return '';
     if (el.id) return `#${escapeCssIdent(el.id)}`;
     const parts = [];
     let node = el;
-    let depth = 0;
-    while (node && node.nodeType === 1 && depth < 4) {
+    while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
+      if (node !== el && node.id) {
+        parts.unshift(`#${escapeCssIdent(node.id)}`);
+        break;
+      }
       let part = node.tagName.toLowerCase();
       const classes = Array.from(node.classList || []).filter(
         (name) => name && !name.startsWith('wn-') && !name.startsWith('uxnote-')
@@ -3650,15 +3711,100 @@
       if (classes.length) {
         part += `.${classes.slice(0, 2).map(escapeCssIdent).join('.')}`;
       }
-      parts.unshift(part);
-      if (node.parentElement && node.parentElement.id) {
-        parts.unshift(`#${escapeCssIdent(node.parentElement.id)}`);
-        break;
+      const parent = node.parentElement;
+      if (parent) {
+        const sameTag = Array.from(parent.children).filter((child) => child.tagName === node.tagName);
+        if (sameTag.length > 1) {
+          part += `:nth-of-type(${sameTag.indexOf(node) + 1})`;
+        }
       }
-      node = node.parentElement;
-      depth += 1;
+      parts.unshift(part);
+      node = parent;
     }
     return parts.join(' > ');
+  }
+
+  // Visible text of an element, whitespace collapsed and capped
+  function getReadableText(el) {
+    if (!el) return '';
+    return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  }
+
+  // Short ancestor chain, e.g. "main#app > section.hero > button.cta"
+  function buildElementPath(el, depth = 5) {
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && node !== document.documentElement && parts.length < depth) {
+      let part = node.tagName.toLowerCase();
+      if (node.id) part += `#${node.id}`;
+      const classes = Array.from(node.classList || []).filter(
+        (name) => name && !name.startsWith('wn-') && !name.startsWith('uxnote-')
+      );
+      if (classes.length) part += `.${classes.slice(0, 2).join('.')}`;
+      parts.unshift(part);
+      node = node.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  // Last heading before the element in document order, to give the AI a visual landmark
+  function findPrecedingHeading(el) {
+    let found = null;
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const heading of headings) {
+      if (isWithinAnnotator(heading) || heading.contains(el)) continue;
+      if (heading.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        found = heading;
+      } else {
+        break;
+      }
+    }
+    return found ? getReadableText(found).slice(0, 120) : '';
+  }
+
+  // Nearest modal / dialog / popup ancestor, or null when the element is in the page itself
+  function findContainingModal(el) {
+    const modalSelector =
+      'dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"], [class*="modal" i], [class*="popup" i]';
+    let node = el;
+    while (node && node.nodeType === 1 && node !== document.body) {
+      if (!isWithinAnnotator(node) && node.matches && node.matches(modalSelector)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  // Modal title from aria-labelledby, aria-label, or its first heading
+  function getModalTitle(modal) {
+    const labelledBy = modal.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      const labelEl = document.getElementById(labelledBy.split(/\s+/)[0]);
+      if (labelEl) return getReadableText(labelEl).slice(0, 120);
+    }
+    const label = modal.getAttribute('aria-label');
+    if (label) return label.slice(0, 120);
+    const heading = modal.querySelector('h1, h2, h3, h4, h5, h6');
+    return heading ? getReadableText(heading).slice(0, 120) : '';
+  }
+
+  // Identity hints for the AI: selector, path, stable attributes, nearest heading, enclosing modal
+  function describeTargetContext(node) {
+    const el = node && node.nodeType === 1 ? node : node && node.parentElement;
+    if (!el) return {};
+    const modal = findContainingModal(el);
+    const attrs = {};
+    ['id', 'name', 'role', 'aria-label', 'data-testid', 'data-test', 'data-cy', 'placeholder', 'title', 'alt', 'href', 'type']
+      .forEach((name) => {
+        const value = el.getAttribute(name);
+        if (value) attrs[name] = value.slice(0, 120);
+      });
+    return {
+      css: buildCssSelector(el),
+      path: buildElementPath(el),
+      attrs,
+      heading: findPrecedingHeading(el),
+      modal: modal ? { selector: buildCssSelector(modal), title: getModalTitle(modal) } : null
+    };
   }
 
   function findNodeByXPath(xpath) {
@@ -4177,6 +4323,18 @@
       const topRight = document.createElement('div');
       topRight.className = 'wn-annot-card-top-right';
 
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'wn-annot-edit wn-annotator';
+      copyBtn.setAttribute('aria-label', 'Copy AI prompt for this note');
+      copyBtn.setAttribute('data-tip', 'Copy AI prompt for this note');
+      copyBtn.innerHTML = iconCopy();
+      copyBtn.addEventListener('click', async (evt) => {
+        evt.stopPropagation();
+        await copyAiPromptForNote(ann, idx + 1);
+      });
+      topRight.appendChild(copyBtn);
+
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.className = 'wn-annot-edit wn-annotator';
@@ -4300,16 +4458,20 @@
     URL.revokeObjectURL(url);
   }
 
-  function exportAnnotationsFiltered(filters) {
+  function filterAnnotationsByFilters(filters) {
     const reviewers = new Set((filters && filters.reviewers) || []);
     const priorities = new Set((filters && filters.priorities) || []);
-    const filtered = state.annotations.filter((ann) => {
+    return state.annotations.filter((ann) => {
       const reviewerValue = (ann.author || '').trim() || '__unknown';
       const priorityValue = ann.priority || 'medium';
       const reviewerOk = !reviewers.size || reviewers.has(reviewerValue);
       const priorityOk = !priorities.size || priorities.has(priorityValue);
       return reviewerOk && priorityOk;
     });
+  }
+
+  function exportAnnotationsFiltered(filters) {
+    const filtered = filterAnnotationsByFilters(filters);
     const payload = buildAnnotationsPayload(filtered);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -4318,6 +4480,130 @@
     a.download = buildFilename();
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Markdown brief for an AI coding assistant: where each note lives, what to find, and what to do
+  function buildAiPrompt(annotations = state.annotations) {
+    const lines = [];
+    const title = (document.title || '').trim();
+    lines.push(`# UX adjustments${title ? `: ${title}` : ''}`);
+    lines.push('');
+    lines.push(`Exported by Uxnote on ${new Date().toLocaleString()} · ${annotations.length} note(s).`);
+    lines.push('');
+    lines.push('## Instructions');
+    lines.push('For each note below:');
+    lines.push('1. Locate the element in the source code. Use the page URL, the element text, the selector, the path, the attributes and the nearest heading. Prefer the most specific match and check that it is the only one.');
+    lines.push('2. Read the reviewer comment and evaluate it against the code and the surrounding design. If it is unclear or conflicts with another note, say so instead of guessing.');
+    lines.push('3. Apply the smallest change that resolves the comment. Do not change unrelated elements.');
+    lines.push('4. Finish with a short report per note: files changed, what changed, and anything you were unsure about.');
+    lines.push('');
+
+    const byPage = new Map();
+    annotations.forEach((ann, idx) => {
+      const key = ann.pageUrl || window.location.href;
+      if (!byPage.has(key)) byPage.set(key, []);
+      byPage.get(key).push({ ann, number: idx + 1 });
+    });
+
+    byPage.forEach((entries, pageUrl) => {
+      lines.push(`## Page: ${pageUrl}`);
+      lines.push('');
+      entries.forEach(({ ann, number }) => {
+        lines.push(...formatAiNote(ann, number));
+      });
+    });
+    return lines.join('\n');
+  }
+
+  function formatAiNote(ann, number) {
+    const t = ann.target || {};
+    const isText = ann.type === 'text';
+    const text = shortenText(isText ? t.quote || ann.snippet || '' : t.text || ann.snippet || '', 160);
+    const tag = !isText && t.tag ? `<${t.tag}>` : '';
+    const subject = isText ? 'highlighted text' : 'element';
+    const priority = ann.priority || 'medium';
+    const comment = (ann.comment || '').trim();
+
+    const describedBy = [tag, text ? `"${text}"` : '', t.css ? `(selector: \`${t.css}\`)` : '']
+      .filter(Boolean)
+      .join(' ');
+    const lines = [];
+    lines.push(`### Note ${number}: ${priority} priority${ann.author ? ` · ${ann.author}` : ''}`);
+    lines.push('');
+    lines.push(
+      `In page ${ann.pageUrl || window.location.href} we have ${subject} ${describedBy || '(not identified)'}. ` +
+        (comment
+          ? `Adapt it based on this comment: "${comment.replace(/\s+/g, ' ')}".`
+          : 'No comment was written: inspect it and report what should change, if anything.')
+    );
+    lines.push('');
+    const details = [];
+    if (tag || text) details.push(`- **Element:** ${[tag, text ? `"${text}"` : ''].filter(Boolean).join(' ')}`);
+    if (t.css) details.push(`- **Selector:** \`${t.css}\``);
+    if (t.xpath || t.startXPath) details.push(`- **XPath:** \`${t.xpath || t.startXPath}\``);
+    if (t.path) details.push(`- **Path:** \`${t.path}\``);
+    const attrs = Object.entries(t.attrs || {});
+    if (attrs.length) {
+      details.push(`- **Attributes:** ${attrs.map(([k, v]) => `${k}="${v}"`).join(', ')}`);
+    }
+    if (t.modal) {
+      const modalTitle = t.modal.title ? ` titled "${t.modal.title}"` : '';
+      details.push(`- **Inside modal:** \`${t.modal.selector}\`${modalTitle}`);
+    }
+    if (t.heading) details.push(`- **Nearest heading:** "${t.heading}"`);
+    if (isText && t.quote) details.push(`- **Highlighted text:** "${shortenText(t.quote, 300)}"`);
+    if (details.length) {
+      lines.push(...details);
+      lines.push('');
+    }
+    if (comment) {
+      lines.push('**Comment:**');
+      comment.split('\n').forEach((line) => lines.push(`> ${line}`));
+      lines.push('');
+    }
+    return lines;
+  }
+
+  function shortenText(value, max) {
+    const clean = String(value || '').replace(/\s+/g, ' ').trim();
+    return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+  }
+
+  async function copyAiPromptForNote(ann, number) {
+    const prompt = buildAiPrompt([ann]);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      showToast(`AI prompt for note #${number} copied.`);
+    } catch (err) {
+      showToast('Clipboard unavailable in this context.');
+    }
+  }
+
+  async function exportAiPromptFiltered(filters) {
+    const annotations = filterAnnotationsByFilters(filters);
+    if (!annotations.length) {
+      showToast('No notes match these filters.');
+      return;
+    }
+    const prompt = buildAiPrompt(annotations);
+    const blob = new Blob([prompt], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = buildFilename().replace(/\.json$/i, '') + '-ai.md';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(prompt);
+        copied = true;
+      }
+    } catch (err) {
+      copied = false;
+    }
+    showToast(copied ? 'AI prompt exported and copied to clipboard.' : 'AI prompt exported.');
   }
 
   function buildAnnotationsPayload(annotations = state.annotations) {
@@ -4329,15 +4615,7 @@
   }
 
   function emailAnnotationsFiltered(filters) {
-    const reviewers = new Set((filters && filters.reviewers) || []);
-    const priorities = new Set((filters && filters.priorities) || []);
-    const filtered = state.annotations.filter((ann) => {
-      const reviewerValue = (ann.author || '').trim() || '__unknown';
-      const priorityValue = ann.priority || 'medium';
-      const reviewerOk = !reviewers.size || reviewers.has(reviewerValue);
-      const priorityOk = !priorities.size || priorities.has(priorityValue);
-      return reviewerOk && priorityOk;
-    });
+    const filtered = filterAnnotationsByFilters(filters);
     sendAnnotationsByMail(filtered);
   }
 
@@ -4427,6 +4705,20 @@
       <path d="M18 12h3" />
     `);
   }
+  function iconAi() {
+    return iconSvg(`
+      <path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z" />
+      <path d="M18 16l.7 1.8L20.5 18.5l-1.8.7L18 21l-.7-1.8L15.5 18.5l1.8-.7z" />
+    `);
+  }
+
+  function iconCopy() {
+    return iconSvg(`
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" />
+    `);
+  }
+
   function iconDownload() {
     return iconSvg(`
       <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />

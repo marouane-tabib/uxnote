@@ -19,9 +19,26 @@ Uxnote is an annotation bar for mockups and websites. Drop a single script to ge
 
 ## Core features
 - Text highlights and element pins with numbered badges.
-- Unified or per-type highlight colors, plus a toggleable dim overlay.
+- Element annotation works inside modals and dialogs. Use `↑` / `↓` to pick the layer you mean when several elements are stacked.
+- Reviewer name is optional: the comment is what matters.
+- Unified or per-type highlight colors. The dim overlay is off by default and can be enabled.
 - Import and export to a single JSON file (title + date), with re-import support.
+- **Export for AI**: a Markdown brief that tells an AI coding assistant where each note lives and what to change (see below).
 - Email handoff for sharing feedback with developers.
+
+## Keyboard shortcuts
+- `Alt+V` (`Option+V` on macOS): show or hide the whole Uxnote layer.
+- `↑` / `↓` in element mode: move between the elements stacked under the pointer (for example a modal backdrop and the content behind it).
+
+The notes panel starts hidden on every page load. Open it with the panel button in the toolbar.
+
+## Export for AI
+The AI export writes a Markdown file (`*-ai.md`) and copies it to the clipboard. It is available in three places:
+- the **sparkle** button in the toolbar (all notes);
+- the **Export for AI** button in the export dialog (filtered by reviewer and priority);
+- the copy button on each note card (one note).
+
+Each note gives the page URL, the element text, a CSS selector, an XPath, the ancestor path, stable attributes (`id`, `data-testid`, `aria-label`, ...), the nearest heading, the enclosing modal when there is one, and the comment. The file also tells the assistant how to locate the element, evaluate the comment, make the smallest change and report back.
 
 ## How it works
 1. Inject the script on each page (or via a global tag manager).
@@ -39,7 +56,7 @@ Place the script right before `</body>` so the DOM is ready. If you must place i
 ## Script tag options
 The landing page builder exposes these options:
 - `colorForHighlight` or `colorForTextHighlight` + `colorForElementHighlight`
-- `isBackdropVisible`
+- `isBackdropVisible` (off by default; set `"true"` to dim the page behind the toolbar)
 - `isToolOnTopAtLaunch`
 - `isToolVisibleAtFirstLaunch`
 - `data-mailto` (recipient for email export)

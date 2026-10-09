@@ -19,9 +19,26 @@ Uxnote est une barre d'annotation pour maquettes et sites web. Ajoutez un seul s
 
 ## Fonctions principales
 - Surlignages de texte et epingles d'elements avec pastilles numerotees.
-- Couleurs unifiees ou par type, plus un voile assombri activable.
+- Annotation d'elements possible dans les modales et dialogues. Utilisez `↑` / `↓` pour choisir le bon calque lorsque plusieurs elements se superposent.
+- Nom du relecteur facultatif : c'est le commentaire qui compte.
+- Couleurs unifiees ou par type. Le voile assombri est desactive par defaut et peut etre active.
 - Import et export dans un fichier JSON unique (titre + date), avec re-import.
+- **Export pour IA** : un brief Markdown qui indique a un assistant de code ou se trouve chaque note et quoi modifier (voir ci-dessous).
 - Envoi par email pour partager les retours avec les developpeurs.
+
+## Raccourcis clavier
+- `Alt+V` (`Option+V` sur macOS) : afficher ou masquer toute la couche Uxnote.
+- `↑` / `↓` en mode element : passer d'un element superpose a l'autre sous le pointeur (par exemple le fond d'une modale et le contenu derriere).
+
+Le panneau des notes est masque a chaque chargement de page. Ouvrez-le avec le bouton panneau de la barre d'outils.
+
+## Export pour IA
+L'export IA ecrit un fichier Markdown (`*-ai.md`) et le copie dans le presse-papiers. Il est disponible a trois endroits :
+- le bouton **etincelle** de la barre d'outils (toutes les notes) ;
+- le bouton **Export pour IA** de la fenetre d'export (filtree par relecteur et priorite) ;
+- le bouton de copie sur chaque carte de note (une seule note).
+
+Chaque note donne l'URL de la page, le texte de l'element, un selecteur CSS, un XPath, le chemin des ancetres, les attributs stables (`id`, `data-testid`, `aria-label`, ...), le titre le plus proche, la modale englobante si elle existe, et le commentaire. Le fichier indique aussi a l'assistant comment localiser l'element, evaluer le commentaire, appliquer le plus petit changement et rendre compte.
 
 ## Comment ca fonctionne
 1. Injectez le script sur chaque page (ou via un tag manager global).
@@ -39,7 +56,7 @@ Placez le script juste avant `</body>` pour que le DOM soit pret. Si vous devez 
 ## Options de la balise script
 Le builder de la landing expose ces options :
 - `colorForHighlight` ou `colorForTextHighlight` + `colorForElementHighlight`
-- `isBackdropVisible`
+- `isBackdropVisible` (desactive par defaut ; mettre `"true"` pour assombrir la page derriere la barre)
 - `isToolOnTopAtLaunch`
 - `isToolVisibleAtFirstLaunch`
 - `data-mailto` (destinataire pour l'export email)
