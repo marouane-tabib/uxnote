@@ -3211,7 +3211,7 @@
 
   // ↑ / ↓ in element mode walk through the stacked layers (e.g. a modal backdrop vs. the content behind it)
   function onElementLayerKey(evt) {
-    if (state.mode !== 'element' || !state.layers.length) return;
+    if (state.mode !== 'element' || state.layers.length < 2) return;
     if (evt.key !== 'ArrowUp' && evt.key !== 'ArrowDown') return;
     if (state.commentModal && state.commentModal.backdrop.classList.contains('show')) return;
     evt.preventDefault();
@@ -4580,6 +4580,10 @@
   }
 
   async function exportAiPromptFiltered(filters) {
+    if (!state.annotations.length) {
+      showToast('No notes to export yet.');
+      return;
+    }
     const annotations = filterAnnotationsByFilters(filters);
     if (!annotations.length) {
       showToast('No notes match these filters.');

@@ -50,8 +50,33 @@ Chaque note donne l'URL de la page, le texte de l'element, un selecteur CSS, un 
 Placez le script juste avant `</body>` pour que le DOM soit pret. Si vous devez le mettre dans `<head>`, ajoutez `defer`.
 
 ```html
-<script src="https://github.com/ninefortyonestudio/uxnote/releases/download/v1.0.0/uxnote.min-v1.0.0.js"></script>
+<script src="https://github.com/marouane-tabib/uxnote/releases/download/v1.0.0/uxnote.min-v1.0.0.js"></script>
 ```
+
+Ce lien fonctionne une fois la version v1.0.0 publiee dans `marouane-tabib/uxnote` (voir [Build et publication](#build-et-publication)). Pour utiliser le fichier sans release, hebergez-le vous-meme et pointez `src` vers lui.
+
+## Build et publication
+Le script est construit depuis `uxnote-tool/uxnote.js` avec esbuild.
+
+Prerequis : Node.js 18 ou plus recent.
+
+```bash
+npm install      # une seule fois, installe esbuild
+npm run build    # ecrit dist/uxnote.min-v<version>.js et son .map
+```
+
+Le nom du fichier vient de `version` dans `package.json`. Le build ne modifie pas les sources.
+
+Pour publier une version :
+1. Mettez a jour `version` dans `package.json`, le commentaire d'en-tete de `uxnote-tool/uxnote.js`, et les snippets d'installation des deux README et de `index.html`.
+2. Ajoutez une entree dans `CHANGELOG.md`.
+3. Lancez `npm run build`.
+4. Creez une release GitHub avec le tag `v<version>` et joignez `dist/uxnote.min-v<version>.js`.
+
+Autres manieres de charger le fichier :
+- Copiez `dist/uxnote.min-v<version>.js` dans votre projet et referencez-le localement, par exemple `<script src="/js/uxnote.min-v1.0.0.js"></script>`.
+- Utilisez `uxnote-tool/uxnote.js` non minifie pendant le developpement ; il fonctionne de la meme facon.
+
 
 ## Options de la balise script
 Le builder de la landing expose ces options :
@@ -78,4 +103,7 @@ Uxnote est publie sous licence MIT. Voir `LICENSE`.
 ## Structure du projet
 - `index.html` - landing page et texte de documentation.
 - `assets/` - styles de la landing et donnees de langue.
-- `uxnote-tool/uxnote.js` - script Uxnote.
+- `uxnote-tool/uxnote.js` - script Uxnote (source).
+- `scripts/build.js` - etape esbuild qui produit le fichier minifie dans `dist/`.
+- `dist/` - sortie du build, non versionnee (creee par `npm run build`).
+- `CHANGELOG.md` - historique des versions.

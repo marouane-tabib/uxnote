@@ -50,8 +50,33 @@ Each note gives the page URL, the element text, a CSS selector, an XPath, the an
 Place the script right before `</body>` so the DOM is ready. If you must place it in `<head>`, add `defer`.
 
 ```html
-<script src="https://github.com/ninefortyonestudio/uxnote/releases/download/v1.0.0/uxnote.min-v1.0.0.js"></script>
+<script src="https://github.com/marouane-tabib/uxnote/releases/download/v1.0.0/uxnote.min-v1.0.0.js"></script>
 ```
+
+This link works once the v1.0.0 release exists in `marouane-tabib/uxnote` (see [Build and release](#build-and-release)). To use the file without a release, host it yourself and point `src` to it.
+
+## Build and release
+The script is built from `uxnote-tool/uxnote.js` with esbuild.
+
+Requirements: Node.js 18 or newer.
+
+```bash
+npm install      # once, installs esbuild
+npm run build    # writes dist/uxnote.min-v<version>.js and its .map
+```
+
+The file name comes from `version` in `package.json`. The build does not touch the source.
+
+To publish a version:
+1. Bump `version` in `package.json`, the header comment of `uxnote-tool/uxnote.js`, and the install snippets in both READMEs and `index.html`.
+2. Add an entry to `CHANGELOG.md`.
+3. Run `npm run build`.
+4. Create a GitHub release with tag `v<version>` and attach `dist/uxnote.min-v<version>.js`.
+
+Other ways to load the file:
+- Copy `dist/uxnote.min-v<version>.js` into your own project and reference it locally, for example `<script src="/js/uxnote.min-v1.0.0.js"></script>`.
+- Use the unminified `uxnote-tool/uxnote.js` while developing; it works the same way.
+
 
 ## Script tag options
 The landing page builder exposes these options:
@@ -78,4 +103,7 @@ Uxnote is released under the MIT License. See `LICENSE`.
 ## Project layout
 - `index.html` - landing page and documentation copy.
 - `assets/` - landing styles and language data.
-- `uxnote-tool/uxnote.js` - Uxnote tool script.
+- `uxnote-tool/uxnote.js` - Uxnote tool script (source).
+- `scripts/build.js` - esbuild step that produces the minified file in `dist/`.
+- `dist/` - build output, not committed (created by `npm run build`).
+- `CHANGELOG.md` - version history.
