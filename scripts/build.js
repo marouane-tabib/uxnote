@@ -3,11 +3,9 @@ const path = require('path');
 const esbuild = require('esbuild');
 
 const root = path.resolve(__dirname, '..');
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const version = pkg.version || '0.0.0';
 const inputPath = path.join(root, 'uxnote-tool', 'uxnote.js');
 const distDir = path.join(root, 'dist');
-const outFile = `uxnote.min-v${version}.js`;
+const outFile = 'uxnote.min.js';
 const outPath = path.join(distDir, outFile);
 const mapPath = `${outPath}.map`;
 
@@ -36,7 +34,7 @@ async function build() {
     }
   }
 
-  console.log(`Built ${outFile}`);
+  console.log(`Built dist/${outFile}`);
 }
 
 build().catch((err) => {

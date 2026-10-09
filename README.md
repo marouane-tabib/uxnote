@@ -50,33 +50,27 @@ Each note gives the page URL, the element text, a CSS selector, an XPath, the an
 Place the script right before `</body>` so the DOM is ready. If you must place it in `<head>`, add `defer`.
 
 ```html
-<script src="https://github.com/marouane-tabib/uxnote/releases/download/v1.0.0/uxnote.min-v1.0.0.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/marouane-tabib/uxnote@main/dist/uxnote.min.js"></script>
 ```
 
-This link works once the v1.0.0 release exists in `marouane-tabib/uxnote` (see [Build and release](#build-and-release)). To use the file without a release, host it yourself and point `src` to it.
+The link is served by [jsDelivr](https://www.jsdelivr.com/) from the `dist/uxnote.min.js` file on the `main` branch of `marouane-tabib/uxnote`. No release or version is needed. The file updates when you push a new build to `main`.
 
-## Build and release
+## Build
 The script is built from `uxnote-tool/uxnote.js` with esbuild.
 
 Requirements: Node.js 18 or newer.
 
 ```bash
 npm install      # once, installs esbuild
-npm run build    # writes dist/uxnote.min-v<version>.js and its .map
+npm run build    # writes dist/uxnote.min.js and dist/uxnote.min.js.map
 ```
 
-The file name comes from `version` in `package.json`. The build does not touch the source.
+To publish a new build:
+1. Run `npm run build`.
+2. Commit `uxnote-tool/uxnote.js` and `dist/uxnote.min.js` (and the `.map`), then push to `main`.
+3. The link above serves the new file. jsDelivr can keep a copy for a few hours; to refresh it at once, open `https://purge.jsdelivr.net/gh/marouane-tabib/uxnote@main/dist/uxnote.min.js`.
 
-To publish a version:
-1. Bump `version` in `package.json`, the header comment of `uxnote-tool/uxnote.js`, and the install snippets in both READMEs and `index.html`.
-2. Add an entry to `CHANGELOG.md`.
-3. Run `npm run build`.
-4. Create a GitHub release with tag `v<version>` and attach `dist/uxnote.min-v<version>.js`.
-
-Other ways to load the file:
-- Copy `dist/uxnote.min-v<version>.js` into your own project and reference it locally, for example `<script src="/js/uxnote.min-v1.0.0.js"></script>`.
-- Use the unminified `uxnote-tool/uxnote.js` while developing; it works the same way.
-
+To use the file in a project without the CDN, copy `dist/uxnote.min.js` into your project and reference it locally, for example `<script src="/js/uxnote.min.js"></script>`.
 
 ## Script tag options
 The landing page builder exposes these options:
@@ -105,5 +99,5 @@ Uxnote is released under the MIT License. See `LICENSE`.
 - `assets/` - landing styles and language data.
 - `uxnote-tool/uxnote.js` - Uxnote tool script (source).
 - `scripts/build.js` - esbuild step that produces the minified file in `dist/`.
-- `dist/` - build output, not committed (created by `npm run build`).
+- `dist/uxnote.min.js` - built script, served by the install link.
 - `CHANGELOG.md` - version history.

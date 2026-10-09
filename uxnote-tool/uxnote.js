@@ -1,8 +1,7 @@
 /*
  * Uxnote
  * Author: ninefortyonestudio (https://github.com/ninefortyonestudio)
- * Repository: https://github.com/ninefortyonestudio/uxnote
- * Version: v1.0.0
+ * Repository: https://github.com/marouane-tabib/uxnote
  * License: MIT (see LICENSE)
  * Built with Codex 5.2
  */
